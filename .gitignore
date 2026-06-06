@@ -1,0 +1,14 @@
+# generated outputs
+embeddings.npy
+segments.json
+diarization_results.json
+emotion_results.json
+
+# models / cache
+pretrained_models/
+__pycache__/
+*.pyc
+
+# env
+venv/
+.env
