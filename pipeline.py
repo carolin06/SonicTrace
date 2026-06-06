@@ -85,10 +85,10 @@ def run_full_pipeline(
     Intermediate files (embeddings.npy, segments.json, diarization/emotion
     JSONs) are written alongside the final pipeline_results.json.
     """
-    from vad_model import detect_speech_segments
-    from embedding_model import extract_embeddings
-    from clustering_model import run_diarization
-    from emotion_model import predict_emotions
+    from models.vad_model import detect_speech_segments
+    from models.embedding_model import extract_embeddings
+    from models.clustering_model import run_diarization
+    from models.emotion_model import predict_emotions
 
     print("=" * 50)
     print("Step 1/4  VAD")

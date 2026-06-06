@@ -100,7 +100,7 @@ def extract_embeddings(
 
 if __name__ == "__main__":
     import sys
-    from vad_model import detect_speech_segments
+    from models.vad_model import detect_speech_segments
 
     if len(sys.argv) < 2:
         print("Usage: python embedding_model.py <audio.wav>")
