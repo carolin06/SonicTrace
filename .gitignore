@@ -6,6 +6,13 @@ emotion_results.json
 transcription_results.json
 pipeline_results.json
 
+# audio files
+*.wav
+
+# model checkpoints and numpy arrays
+*.npy
+*.ckpt
+
 # models / cache
 pretrained_models/
 __pycache__/

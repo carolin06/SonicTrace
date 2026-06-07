@@ -106,11 +106,14 @@ def run_full_pipeline(
     """
     End-to-end: VAD → embeddings → clustering → emotion → transcription → merge.
     """
+    # emotion_model must be imported first — transformers must initialise
+    # torch.distributed.tensor before speechbrain registers its k2_fsa lazy
+    # module, otherwise inspect triggers an ImportError for the missing k2 package
+    from models.emotion_model import predict_emotions
+    from models.transcription_model import transcribe_segments
     from models.vad_model import detect_speech_segments
     from models.embedding_model import extract_embeddings
     from models.clustering_model import run_diarization
-    from models.emotion_model import predict_emotions
-    from models.transcription_model import transcribe_segments
 
     print("=" * 50)
     print("Step 1/5  VAD")
