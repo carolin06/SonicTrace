@@ -9,7 +9,7 @@ from sklearn.metrics import silhouette_score
 EMBEDDINGS_PATH = "embeddings.npy"
 SEGMENTS_PATH = "segments.json"
 RESULTS_PATH = "diarization_results.json"
-MIN_SPEAKERS = 2
+MIN_SPEAKERS = 1
 MAX_SPEAKERS = 6
 
 
@@ -32,21 +32,37 @@ def detect_num_speakers(
     max_k: int = MAX_SPEAKERS,
 ) -> int:
     """
-    Try k = min_k..max_k with agglomerative clustering (cosine distance) and
-    return the k with the highest silhouette score.
+    Try k = 2..max_k with agglomerative clustering (cosine distance) and return
+    the k with the highest silhouette score. Returns 1 if no split beats the
+    single-speaker baseline (silhouette > 0) or if there are too few segments.
     """
-    max_k = min(max_k, len(embeddings) - 1)
-    best_k = min_k
-    best_score = -1.0
+    n = len(embeddings)
 
-    for k in range(min_k, max_k + 1):
+    # silhouette needs at least 3 samples to form 2 non-trivial clusters
+    if n < 3:
+        return 1
+
+    max_k = min(max_k, n - 1)
+
+    # baseline: 1 speaker (silhouette undefined for k=1, treat as 0)
+    best_k = 1
+    best_score = 0.0
+
+    for k in range(max(min_k, 2), max_k + 1):
         labels = AgglomerativeClustering(
             n_clusters=k,
             metric="cosine",
             linkage="average",
         ).fit_predict(embeddings)
 
-        score = silhouette_score(embeddings, labels, metric="cosine")
+        if len(np.unique(labels)) < 2:
+            continue
+
+        try:
+            score = silhouette_score(embeddings, labels, metric="cosine")
+        except ValueError:
+            continue
+
         if score > best_score:
             best_score = score
             best_k = k
@@ -60,15 +76,16 @@ def cluster_speakers(
     n_speakers: int,
 ) -> np.ndarray:
     """
-    Cluster normalized embeddings with agglomerative clustering (cosine distance).
+    Cluster pre-normalized embeddings with agglomerative clustering (cosine distance).
     Returns integer label array of shape (N,).
     """
-    normed = normalize(embeddings, norm="l2")
+    if n_speakers == 1:
+        return np.zeros(len(embeddings), dtype=int)
     labels = AgglomerativeClustering(
         n_clusters=n_speakers,
         metric="cosine",
         linkage="average",
-    ).fit_predict(normed)
+    ).fit_predict(embeddings)
     return labels
 
 
@@ -106,8 +123,10 @@ def run_diarization(
     embeddings, segments = load_inputs(embeddings_path, segments_path)
     print(f"Loaded embeddings: {embeddings.shape}  |  segments: {len(segments)}")
 
-    n_speakers = detect_num_speakers(embeddings)
-    labels = cluster_speakers(embeddings, n_speakers)
+    # normalize once so detect and cluster operate on the same geometry
+    normed = normalize(embeddings, norm="l2")
+    n_speakers = detect_num_speakers(normed)
+    labels = cluster_speakers(normed, n_speakers)
     results = build_results(segments, labels)
     save_results(results, results_path)
 
