@@ -2,6 +2,7 @@ torch
 torchaudio
 speechbrain
 transformers
+openai-whisper
 scikit-learn
 librosa
 soundfile

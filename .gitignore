@@ -3,6 +3,8 @@ embeddings.npy
 segments.json
 diarization_results.json
 emotion_results.json
+transcription_results.json
+pipeline_results.json
 
 # models / cache
 pretrained_models/
