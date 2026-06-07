@@ -123,6 +123,15 @@ def run_diarization(
     embeddings, segments = load_inputs(embeddings_path, segments_path)
     print(f"Loaded embeddings: {embeddings.shape}  |  segments: {len(segments)}")
 
+    if len(segments) < 2:
+        print("Only 1 segment — skipping clustering, assigning Speaker_1")
+        results = [{"start": segments[0]["start"], "end": segments[0]["end"], "speaker": "Speaker_1"}]
+        save_results(results, results_path)
+        print("\nDiarization results:")
+        for r in results:
+            print(f"  {r['start']:7.3f}s -> {r['end']:7.3f}s  |  {r['speaker']}")
+        return results
+
     # normalize once so detect and cluster operate on the same geometry
     normed = normalize(embeddings, norm="l2")
     n_speakers = detect_num_speakers(normed)
