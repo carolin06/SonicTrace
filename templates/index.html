@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SonicTrace — Speaker Diarization</title>
+<style>
+  :root {
+    --bg:       #0f1117;
+    --surface:  #1a1d27;
+    --card:     #22263a;
+    --border:   #2e3348;
+    --accent:   #6c8ef5;
+    --accent2:  #a78bfa;
+    --text:     #e2e8f0;
+    --muted:    #7c849e;
+    --success:  #34d399;
+    --error:    #f87171;
+    --spk-colors: #6c8ef5, #f97316, #34d399, #f472b6, #a78bfa, #facc15, #22d3ee, #fb923c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+  /* ── Header ── */
+  header {
+    background: linear-gradient(135deg, #1a1d27 0%, #12152a 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 1.2rem 2rem;
+    display: flex; align-items: center; gap: 0.75rem;
+  }
+  header svg { flex-shrink: 0; }
+  header h1 { font-size: 1.5rem; font-weight: 700; background: linear-gradient(90deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  header p  { font-size: 0.8rem; color: var(--muted); margin-top: 0.1rem; }
+
+  /* ── Layout ── */
+  main { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+  /* ── Upload card ── */
+  #upload-card {
+    background: var(--surface);
+    border: 2px dashed var(--border);
+    border-radius: 16px;
+    padding: 3rem 2rem;
+    text-align: center;
+    transition: border-color 0.2s, background 0.2s;
+    cursor: pointer;
+  }
+  #upload-card.dragover { border-color: var(--accent); background: #1c2040; }
+  #upload-card svg { color: var(--accent); margin-bottom: 1rem; }
+  #upload-card h2 { font-size: 1.1rem; margin-bottom: 0.4rem; }
+  #upload-card p  { font-size: 0.85rem; color: var(--muted); }
+  #file-input { display: none; }
+  #file-label {
+    display: inline-block; margin-top: 1.2rem;
+    background: var(--accent); color: #fff;
+    padding: 0.55rem 1.4rem; border-radius: 8px;
+    font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  #file-label:hover { opacity: 0.85; }
+  #selected-file { margin-top: 0.8rem; font-size: 0.85rem; color: var(--success); min-height: 1.2rem; }
+
+  /* ── Analyze button ── */
+  #analyze-btn {
+    display: block; width: 100%; margin-top: 1.2rem;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    color: #fff; border: none; border-radius: 10px;
+    padding: 0.85rem; font-size: 1rem; font-weight: 700;
+    cursor: pointer; transition: opacity 0.2s;
+  }
+  #analyze-btn:hover:not(:disabled) { opacity: 0.88; }
+  #analyze-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Spinner ── */
+  #loading { display: none; text-align: center; padding: 3rem 0; }
+  #loading.show { display: block; }
+  .spinner {
+    width: 52px; height: 52px; border-radius: 50%;
+    border: 4px solid var(--border);
+    border-top-color: var(--accent);
+    animation: spin 0.9s linear infinite;
+    margin: 0 auto 1.2rem;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading-msg { color: var(--muted); font-size: 0.95rem; }
+
+  /* ── Error ── */
+  #error-box { display: none; background: #2a1515; border: 1px solid var(--error); border-radius: 10px; padding: 1rem 1.2rem; margin-top: 1.2rem; color: var(--error); font-size: 0.9rem; }
+  #error-box.show { display: block; }
+
+  /* ── Results ── */
+  #results { display: none; margin-top: 2rem; }
+  #results.show { display: block; }
+
+  /* ── Stat cards ── */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+  .stat-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.2rem 1rem; text-align: center;
+  }
+  .stat-card .val { font-size: 2rem; font-weight: 800; color: var(--accent); line-height: 1; }
+  .stat-card .lbl { font-size: 0.78rem; color: var(--muted); margin-top: 0.35rem; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* ── Section headers ── */
+  .section-title {
+    font-size: 0.78rem; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 0.8rem;
+  }
+  .section { margin-bottom: 2rem; }
+
+  /* ── Timeline ── */
+  #timeline-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.4rem 1.2rem; overflow-x: auto;
+  }
+  .tl-row { display: flex; align-items: center; margin-bottom: 0.6rem; min-height: 40px; }
+  .tl-label { width: 90px; flex-shrink: 0; font-size: 0.8rem; color: var(--muted); font-weight: 600; padding-right: 0.8rem; }
+  .tl-track { position: relative; flex: 1; height: 36px; background: var(--card); border-radius: 6px; min-width: 400px; }
+  .tl-bar {
+    position: absolute; top: 4px; bottom: 4px;
+    border-radius: 5px; display: flex; align-items: center;
+    justify-content: center; font-size: 0.7rem; font-weight: 700;
+    color: #fff; white-space: nowrap; overflow: hidden;
+    padding: 0 6px; cursor: default;
+    transition: filter 0.15s;
+  }
+  .tl-bar:hover { filter: brightness(1.2); }
+  .tl-axis { display: flex; justify-content: space-between; padding: 0.3rem 0 0 90px; font-size: 0.7rem; color: var(--muted); }
+
+  /* ── Legend ── */
+  .legend { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.8rem; }
+  .legend-item { display: flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--muted); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+  /* ── Transcript ── */
+  #transcript-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.4rem 1.2rem;
+  }
+  .seg-row {
+    display: flex; gap: 1rem; padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .seg-row:last-child { border-bottom: none; }
+  .seg-meta { flex-shrink: 0; width: 100px; }
+  .seg-spk { font-size: 0.8rem; font-weight: 700; }
+  .seg-ts  { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; }
+  .seg-em  { font-size: 0.7rem; color: var(--muted); margin-top: 0.15rem; font-style: italic; }
+  .seg-text { font-size: 0.9rem; line-height: 1.5; color: var(--text); padding-top: 0.1rem; }
+
+  /* ── Downloads ── */
+  .downloads { display: flex; flex-wrap: wrap; gap: 0.8rem; }
+  .dl-btn {
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    background: var(--card); border: 1px solid var(--border);
+    color: var(--text); text-decoration: none;
+    padding: 0.55rem 1.1rem; border-radius: 8px;
+    font-size: 0.85rem; font-weight: 600; transition: border-color 0.2s, color 0.2s;
+  }
+  .dl-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Tooltip ── */
+  .tl-bar[title]:hover::after {
+    content: attr(title);
+    position: absolute; bottom: calc(100% + 6px); left: 50%;
+    transform: translateX(-50%);
+    background: #0f1117; border: 1px solid var(--border);
+    border-radius: 6px; padding: 0.3rem 0.6rem;
+    font-size: 0.72rem; white-space: nowrap; pointer-events: none; z-index: 10;
+    color: var(--text);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+    <circle cx="16" cy="16" r="15" stroke="#6c8ef5" stroke-width="2"/>
+    <path d="M8 16 Q10 8 12 16 Q14 24 16 16 Q18 8 20 16 Q22 24 24 16" stroke="#a78bfa" stroke-width="2" fill="none" stroke-linecap="round"/>
+  </svg>
+  <div>
+    <h1>SonicTrace</h1>
+    <p>Speaker diarization · emotion · transcription</p>
+  </div>
+</header>
+
+<main>
+
+  <!-- Upload -->
+  <div id="upload-card">
+    <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 16V4m0 0L8 8m4-4 4 4M4 20h16"/>
+    </svg>
+    <h2>Drop your audio file here</h2>
+    <p>Supports .wav · .mp3 · .flac — up to 200 MB</p>
+    <label id="file-label" for="file-input">Choose file</label>
+    <input type="file" id="file-input" accept=".wav,.mp3,.flac" />
+    <div id="selected-file"></div>
+  </div>
+
+  <button id="analyze-btn" disabled>Analyze</button>
+
+  <!-- Loading -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <div id="loading-msg">Running pipeline — VAD → embeddings → clustering → emotion → transcription…</div>
+  </div>
+
+  <!-- Error -->
+  <div id="error-box"></div>
+
+  <!-- Results -->
+  <div id="results">
+
+    <!-- Stat cards -->
+    <div class="stats">
+      <div class="stat-card"><div class="val" id="stat-speakers">—</div><div class="lbl">Speakers</div></div>
+      <div class="stat-card"><div class="val" id="stat-segments">—</div><div class="lbl">Segments</div></div>
+      <div class="stat-card"><div class="val" id="stat-duration">—</div><div class="lbl">Duration (s)</div></div>
+      <div class="stat-card"><div class="val" id="stat-emotions">—</div><div class="lbl">Emotions</div></div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="section">
+      <div class="section-title">Speaker Timeline</div>
+      <div id="timeline-wrap">
+        <div id="timeline-rows"></div>
+        <div class="tl-axis" id="tl-axis"></div>
+        <div class="legend" id="legend"></div>
+      </div>
+    </div>
+
+    <!-- Transcript -->
+    <div class="section">
+      <div class="section-title">Transcript</div>
+      <div id="transcript-wrap">
+        <div id="transcript-rows"></div>
+      </div>
+    </div>
+
+    <!-- Downloads -->
+    <div class="section">
+      <div class="section-title">Download</div>
+      <div class="downloads">
+        <a class="dl-btn" href="/download/srt">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0-3-3m3 3 3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+          SRT Subtitles
+        </a>
+        <a class="dl-btn" href="/download/csv">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0-3-3m3 3 3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+          CSV Data
+        </a>
+        <a class="dl-btn" href="/download/transcript">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 10v6m0 0-3-3m3 3 3-3M3 17V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+          Transcript
+        </a>
+      </div>
+    </div>
+
+  </div><!-- /results -->
+
+</main>
+
+<script>
+const SPK_COLORS = ['#6c8ef5','#f97316','#34d399','#f472b6','#a78bfa','#facc15','#22d3ee','#fb923c'];
+
+const fileInput   = document.getElementById('file-input');
+const fileLabel   = document.getElementById('selected-file');
+const analyzeBtn  = document.getElementById('analyze-btn');
+const uploadCard  = document.getElementById('upload-card');
+const loading     = document.getElementById('loading');
+const errorBox    = document.getElementById('error-box');
+const results     = document.getElementById('results');
+
+let selectedFile = null;
+
+// Drag-and-drop
+uploadCard.addEventListener('dragover', e => { e.preventDefault(); uploadCard.classList.add('dragover'); });
+uploadCard.addEventListener('dragleave', () => uploadCard.classList.remove('dragover'));
+uploadCard.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadCard.classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f) setFile(f);
+});
+uploadCard.addEventListener('click', e => {
+  if (e.target.tagName !== 'LABEL' && e.target.tagName !== 'INPUT') fileInput.click();
+});
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) setFile(fileInput.files[0]);
+});
+
+function setFile(f) {
+  selectedFile = f;
+  fileLabel.textContent = f.name + '  (' + (f.size / 1024 / 1024).toFixed(1) + ' MB)';
+  analyzeBtn.disabled = false;
+}
+
+analyzeBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+
+  // Reset UI
+  errorBox.classList.remove('show');
+  errorBox.textContent = '';
+  results.classList.remove('show');
+  loading.classList.add('show');
+  analyzeBtn.disabled = true;
+
+  const steps = [
+    'Running VAD — detecting speech segments…',
+    'Extracting speaker embeddings (ECAPA-TDNN)…',
+    'Clustering speakers…',
+    'Detecting emotions (Wav2Vec2)…',
+    'Transcribing with Whisper…',
+    'Merging and saving results…',
+  ];
+  let stepIdx = 0;
+  const msgEl = document.getElementById('loading-msg');
+  msgEl.textContent = steps[0];
+  const stepTimer = setInterval(() => {
+    stepIdx = Math.min(stepIdx + 1, steps.length - 1);
+    msgEl.textContent = steps[stepIdx];
+  }, 25000);
+
+  try {
+    const form = new FormData();
+    form.append('audio', selectedFile);
+
+    const res = await fetch('/analyze', { method: 'POST', body: form });
+    const data = await res.json();
+
+    if (!res.ok || data.error) throw new Error(data.error || 'Unknown error');
+
+    renderResults(data);
+  } catch (err) {
+    errorBox.textContent = 'Error: ' + err.message;
+    errorBox.classList.add('show');
+  } finally {
+    clearInterval(stepTimer);
+    loading.classList.remove('show');
+    analyzeBtn.disabled = false;
+  }
+});
+
+function renderResults(data) {
+  const { segments, summary } = data;
+  const speakers = summary.speakers;
+  const colorMap = {};
+  speakers.forEach((s, i) => colorMap[s] = SPK_COLORS[i % SPK_COLORS.length]);
+
+  // Stat cards
+  document.getElementById('stat-speakers').textContent = summary.speaker_count;
+  document.getElementById('stat-segments').textContent = summary.segment_count;
+  document.getElementById('stat-duration').textContent = summary.total_duration;
+  const emotions = [...new Set(segments.map(s => s.emotion))];
+  document.getElementById('stat-emotions').textContent = emotions.length;
+
+  // Timeline
+  const totalDur = summary.total_duration;
+  const tlRows   = document.getElementById('timeline-rows');
+  tlRows.innerHTML = '';
+
+  speakers.forEach(spk => {
+    const row  = document.createElement('div');
+    row.className = 'tl-row';
+
+    const lbl = document.createElement('div');
+    lbl.className = 'tl-label';
+    lbl.textContent = spk;
+
+    const track = document.createElement('div');
+    track.className = 'tl-track';
+
+    segments.filter(s => s.speaker === spk).forEach(seg => {
+      const bar = document.createElement('div');
+      bar.className = 'tl-bar';
+      bar.style.left  = (seg.start / totalDur * 100) + '%';
+      bar.style.width = ((seg.end - seg.start) / totalDur * 100) + '%';
+      bar.style.background = colorMap[spk];
+      bar.style.opacity = '0.88';
+      bar.title = `${seg.start.toFixed(1)}s–${seg.end.toFixed(1)}s · ${seg.emotion}`;
+      const barW = (seg.end - seg.start) / totalDur * 100;
+      if (barW > 5) bar.textContent = seg.emotion;
+      track.appendChild(bar);
+    });
+
+    row.appendChild(lbl);
+    row.appendChild(track);
+    tlRows.appendChild(row);
+  });
+
+  // Axis
+  const axis = document.getElementById('tl-axis');
+  axis.innerHTML = '';
+  const ticks = 6;
+  for (let i = 0; i <= ticks; i++) {
+    const t = document.createElement('span');
+    t.textContent = (totalDur / ticks * i).toFixed(0) + 's';
+    axis.appendChild(t);
+  }
+
+  // Legend
+  const legend = document.getElementById('legend');
+  legend.innerHTML = '';
+  speakers.forEach(spk => {
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `<div class="legend-dot" style="background:${colorMap[spk]}"></div>${spk}`;
+    legend.appendChild(item);
+  });
+
+  // Transcript
+  const txRows = document.getElementById('transcript-rows');
+  txRows.innerHTML = '';
+  segments.forEach(seg => {
+    const row = document.createElement('div');
+    row.className = 'seg-row';
+    row.innerHTML = `
+      <div class="seg-meta">
+        <div class="seg-spk" style="color:${colorMap[seg.speaker]}">${seg.speaker}</div>
+        <div class="seg-ts">${seg.start.toFixed(1)}s – ${seg.end.toFixed(1)}s</div>
+        <div class="seg-em">${seg.emotion} · ${(seg.confidence * 100).toFixed(0)}%</div>
+      </div>
+      <div class="seg-text">${seg.text || '<em style="color:var(--muted)">no transcript</em>'}</div>`;
+    txRows.appendChild(row);
+  });
+
+  results.classList.add('show');
+  results.scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+</body>
+</html>
